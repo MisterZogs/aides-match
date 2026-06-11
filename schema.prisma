@@ -1,0 +1,189 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ─── Auth & Users ─────────────────────────────────────────────────────────────
+
+model User {
+  id                            String    @id @default(uuid())
+  createdAt                     DateTime  @default(now())
+
+  email                         String?   @unique
+  username                      String?   @unique
+  isAdmin                       Boolean   @default(false)
+
+  paymentProcessorUserId        String?   @unique
+  lemonSqueezyCustomerPortalUrl String?
+  subscriptionStatus            String?   // 'active' | 'cancel_at_period_end' | 'past_due' | 'deleted'
+  subscriptionPlan              String?   // 'pro' | 'agency'
+  datePaid                      DateTime?
+
+  contactFormMessages           ContactFormMessage[]
+  alertes                       Alerte[]
+}
+
+// ─── Aides ────────────────────────────────────────────────────────────────────
+
+model Aide {
+  id                String        @id @default(cuid())
+  sourceId          String
+  source            String        // "aides-entreprises" | "aides-territoires" | "les-aides"
+  titre             String
+  description       String        @db.Text
+  url               String
+
+  criteresJson      Json?
+  criteresConfiance Float         @default(0)
+
+  montantMin        Float?
+  montantMax        Float?
+  tauxAide          Float?
+  typeMontant       String?       // "subvention" | "pret" | "garantie" | "conseil"
+  deadline          DateTime?
+  actif             Boolean       @default(true)
+
+  portee            String        // "national" | "regional" | "departemental" | "local"
+  codesRegion       String[]
+  codesDept         String[]
+
+  derniereVerif     DateTime      @default(now())
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  matchResults      MatchResult[]
+  llmLogs           LlmLog[]
+
+  @@unique([sourceId, source])
+  @@index([actif])
+  @@index([portee])
+  @@index([deadline])
+}
+
+// ─── Entreprises ──────────────────────────────────────────────────────────────
+
+model EntrepriseProfile {
+  id              String        @id @default(cuid())
+  siren           String        @unique
+  siret           String
+  denomination    String
+  codeNaf         String
+  libelleNaf      String
+  formeJuridique  String
+  effectifTranche String?
+  dateCreation    DateTime?
+  codePostal      String
+  codeInsee       String
+  commune         String        @default("")
+  codeRegion      String
+  codeDept        String
+  tva             String?
+
+  fetchedAt       DateTime      @default(now())
+
+  matchResults    MatchResult[]
+
+  @@index([codeNaf])
+  @@index([codeRegion])
+}
+
+// ─── Matching ─────────────────────────────────────────────────────────────────
+
+model MatchResult {
+  id        String   @id @default(cuid())
+  sirenId   String
+  aideId    String
+
+  score     String   // "eligible" | "probable" | "non_eligible"
+  detail    Json     // { criteresValides, criteresEchoues, criteresInconnus }
+
+  createdAt DateTime @default(now())
+
+  entreprise EntrepriseProfile @relation(fields: [sirenId], references: [siren])
+  aide       Aide              @relation(fields: [aideId], references: [id])
+
+  @@unique([sirenId, aideId])
+}
+
+// ─── Alertes ──────────────────────────────────────────────────────────────────
+
+model Alerte {
+  id           String    @id @default(cuid())
+  userId       String
+  siren        String
+  nom          String
+  filtres      Json      // { themes, regions, typesMontant, montantMin }
+  actif        Boolean   @default(true)
+  dernierEnvoi DateTime?
+  createdAt    DateTime  @default(now())
+
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([actif])
+}
+
+// ─── LLM Logs ─────────────────────────────────────────────────────────────────
+
+model LlmLog {
+  id        String   @id @default(cuid())
+  aideId    String
+  tokens    Int
+  confiance Float
+  duree     Int      // ms
+  createdAt DateTime @default(now())
+
+  aide      Aide     @relation(fields: [aideId], references: [id])
+}
+
+// ─── Analytics (Open SaaS built-in) ──────────────────────────────────────────
+
+model DailyStats {
+  id                        Int              @id @default(autoincrement())
+  date                      DateTime         @default(now()) @unique
+
+  totalViews                Int              @default(0)
+  prevDayViewsChangePercent String           @default("0")
+  userCount                 Int              @default(0)
+  paidUserCount             Int              @default(0)
+  userDelta                 Int              @default(0)
+  paidUserDelta             Int              @default(0)
+  totalRevenue              Float            @default(0)
+  totalProfit               Float            @default(0)
+
+  sources                   PageViewSource[]
+}
+
+model PageViewSource {
+  @@id([date, name])
+  name         String
+  date         DateTime   @default(now())
+
+  dailyStats   DailyStats? @relation(fields: [dailyStatsId], references: [id])
+  dailyStatsId Int?
+
+  visitors     Int
+}
+
+model Logs {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+
+  message   String
+  level     String
+}
+
+model ContactFormMessage {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+
+  content   String
+  isRead    Boolean  @default(false)
+  repliedAt DateTime?
+}

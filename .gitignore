@@ -1,0 +1,11 @@
+node_modules/
+.wasp/
+
+# Env files — ne jamais committer les clés
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
