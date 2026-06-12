@@ -5,6 +5,7 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [wasp(), tailwindcss()],
   server: {
+    port: 3011,
     open: true,
   },
 });
